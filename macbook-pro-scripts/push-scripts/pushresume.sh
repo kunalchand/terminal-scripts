@@ -75,7 +75,7 @@ commit_and_push_if_needed() {
             SKIPPED_REPOS+=("$repo_name")
         fi
     else
-        if [[ -n "$(git.status --porcelain)" ]]; then
+        if [[ -n "$(git status --porcelain)" ]]; then
             log "Committing in ${repo_name} with message: ${CYAN}$commit_msg${NC}"
             git add .
             git commit -m "$commit_msg"
