@@ -64,15 +64,37 @@ if [ -f "$ALIAS_FILE" ]; then
 fi
 
 # ----------------------------------------------------------------------------
+# Section: PATH Configuration
+# Purpose: Add custom binary locations to PATH
+# ----------------------------------------------------------------------------
+
+# Claude Code
+export PATH="$HOME/.local/bin:$PATH"
+
+# Pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+
+# ----------------------------------------------------------------------------
 # Section: Python Environment (Pyenv)
 # Purpose: Initialize pyenv for Python version management
 # ----------------------------------------------------------------------------
 
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init --path)"
 eval "$(pyenv init -)"
 
 # ============================================================================
 # END OF CONFIGURATION
+# ============================================================================
+
+# ============================================================================
+# REFERENCE: Main ~/.zshrc file content
+# ============================================================================
+# 
+# # Source zshrc configuration
+# ZSHRC_CONFIG=~/Desktop/projects/others/terminal-scripts/macbook-pro-scripts/zshrc-config.zsh
+# if [ -f "$ZSHRC_CONFIG" ]; then
+#     source "$ZSHRC_CONFIG"
+# fi
+#
 # ============================================================================
