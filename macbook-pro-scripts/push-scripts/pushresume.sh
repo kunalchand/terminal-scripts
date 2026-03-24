@@ -6,7 +6,9 @@ RESUME_PDF="Kunal_Chand_general.pdf"
 RESUME_ZIP="Kunal_Chand_general.zip"
 TARGET_NAME="Kunal_Chand_resume.pdf"
 
-# macOS paths
+DOWNLOADS_DIR="$HOME/Documents/overleaf_files"
+OVERLEAF_GENERAL_DIR="/Users/kunalchand/Desktop/projects/others/resume-tracker/overleaf/general"
+
 PORTFOLIO_DIR="/Users/kunalchand/Desktop/projects/others/kunalchand.github.io/portfolio/assets"
 DESKTOP_DIR="/Users/kunalchand/Desktop"
 
@@ -23,7 +25,7 @@ GREEN="\033[0;32m"
 RED="\033[0;31m"
 YELLOW="\033[1;33m"
 CYAN="\033[0;36m"
-NC="\033[0m" # No Color
+NC="\033[0m"
 
 # ========= FUNCTIONS =========
 log() {
@@ -53,6 +55,18 @@ run_cmd() {
     fi
 }
 
+# Increment version: v5.8 -> v5.9, v5.9 -> v6.0
+next_version() {
+    local ver="${1#v}"
+    local major="${ver%.*}"
+    local minor="${ver#*.}"
+    if [ "$minor" -ge 9 ]; then
+        echo "v$((major + 1)).0"
+    else
+        echo "v${major}.$((minor + 1))"
+    fi
+}
+
 commit_and_push_if_needed() {
     local repo_path=$1
     local commit_msg=$2
@@ -65,10 +79,7 @@ commit_and_push_if_needed() {
     if [ "$DRY_RUN" = true ]; then
         if [[ -n "$(git status --porcelain)" ]]; then
             log "Would commit in ${repo_name} with message: ${CYAN}$commit_msg${NC}"
-            dryrun_log "cd $repo_path"
-            dryrun_log "git add ."
-            dryrun_log "git commit -m \"$commit_msg\""
-            dryrun_log "git push"
+            dryrun_log "cd $repo_path && git add . && git commit -m \"$commit_msg\" && git push"
             UPDATED_REPOS+=("$repo_name")
         else
             log "No changes detected in ${repo_name} (dry-run), would skip."
@@ -91,39 +102,49 @@ commit_and_push_if_needed() {
 }
 
 handle_latex_zip() {
-    check_exists "$RESUME_ZIP"
+    local version_dir=$1
+    local zip_src="$DOWNLOADS_DIR/$RESUME_ZIP"
+    check_exists "$zip_src"
 
-    LATEX_DIR="LaTeX"
-    LATEX_ZIP_PATH="$LATEX_DIR/$RESUME_ZIP"
-    EXTRACT_DIR="$LATEX_DIR/${RESUME_ZIP%.zip}"
+    local latex_dir="$version_dir/LaTeX"
+    local latex_zip_path="$latex_dir/$RESUME_ZIP"
+    local extract_dir="$latex_dir/${RESUME_ZIP%.zip}"
 
     if [ "$DRY_RUN" = true ]; then
-        dryrun_log "mkdir -p \"$LATEX_DIR\""
-        dryrun_log "mv \"$RESUME_ZIP\" \"$LATEX_DIR/\""
-        dryrun_log "unzip -o \"$LATEX_ZIP_PATH\" -d \"$EXTRACT_DIR\""
+        dryrun_log "mkdir -p \"$latex_dir\""
+        dryrun_log "cp \"$zip_src\" \"$latex_zip_path\""
+        dryrun_log "unzip -o \"$latex_zip_path\" -d \"$extract_dir\""
     else
-        mkdir -p "$LATEX_DIR"
-        mv "$RESUME_ZIP" "$LATEX_DIR/"
-        unzip -o "$LATEX_ZIP_PATH" -d "$EXTRACT_DIR"
+        mkdir -p "$latex_dir"
+        cp "$zip_src" "$latex_zip_path"
+        unzip -o "$latex_zip_path" -d "$extract_dir"
     fi
 
     echo ""
 }
 
 handle_pdf_copy() {
-    check_exists "$RESUME_PDF"
+    local version_dir=$1
+    local pdf_src="$DOWNLOADS_DIR/$RESUME_PDF"
+    check_exists "$pdf_src"
 
+    # Copy PDF into the version folder
+    if [ "$DRY_RUN" = true ]; then
+        dryrun_log "cp -f \"$pdf_src\" \"$version_dir/$RESUME_PDF\""
+    else
+        cp -f "$pdf_src" "$version_dir/$RESUME_PDF"
+    fi
+
+    # Copy PDF to portfolio site and Desktop
     for DEST in "$PORTFOLIO_DIR" "$DESKTOP_DIR"; do
         check_exists "$DEST"
-        TARGET_PATH="$DEST/$TARGET_NAME"
-
+        local target_path="$DEST/$TARGET_NAME"
         if [ "$DRY_RUN" = true ]; then
-            dryrun_log "cp -f \"$RESUME_PDF\" \"$TARGET_PATH\""
+            dryrun_log "cp -f \"$pdf_src\" \"$target_path\""
         else
-            cp -f "$RESUME_PDF" "$TARGET_PATH"
+            cp -f "$pdf_src" "$target_path"
         fi
-
-        COPIED_FILES+=("$TARGET_PATH")
+        COPIED_FILES+=("$target_path")
     done
 
     echo ""
@@ -158,21 +179,76 @@ print_summary() {
     echo -e "${CYAN}===========================${NC}\n"
 }
 
+# ========= MAIN =========
+
 if [[ "${1:-}" == "--dry-run" ]]; then
     DRY_RUN=true
     log "Running in DRY RUN mode"
     echo ""
 fi
 
-CURRENT_DIR=$(pwd)
-VERSION=$(basename "$CURRENT_DIR")
-
-log "Current directory: $CURRENT_DIR"
-log "Detected version: $VERSION"
+# Step 1: Verify source files exist in Documents
+log "Checking for source files in $DOWNLOADS_DIR..."
+check_exists "$DOWNLOADS_DIR/$RESUME_PDF"
+check_exists "$DOWNLOADS_DIR/$RESUME_ZIP"
+log "Found: $RESUME_PDF"
+log "Found: $RESUME_ZIP"
 echo ""
 
-handle_latex_zip
-handle_pdf_copy
+# Step 2: Detect latest version folder
+log "Scanning versions in $OVERLEAF_GENERAL_DIR..."
+check_exists "$OVERLEAF_GENERAL_DIR"
+
+LATEST_VERSION=$(ls "$OVERLEAF_GENERAL_DIR" | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -1)
+if [ -z "$LATEST_VERSION" ]; then
+    error_exit "No version folders found in $OVERLEAF_GENERAL_DIR"
+fi
+
+NEXT_VERSION=$(next_version "$LATEST_VERSION")
+log "Latest version detected: ${CYAN}${LATEST_VERSION}${NC}"
+log "Next version would be:   ${CYAN}${NEXT_VERSION}${NC}"
+echo ""
+
+# Step 3: Ask user what to do
+echo -e "${YELLOW}What would you like to do?${NC}"
+echo "  [1] Update existing version (${LATEST_VERSION}) — replace its contents"
+echo "  [2] Create new version      (${NEXT_VERSION}) — new folder"
+echo ""
+printf "Enter choice [1/2]: "
+read -r CHOICE
+echo ""
+
+if [[ "$CHOICE" == "1" ]]; then
+    VERSION="$LATEST_VERSION"
+    VERSION_DIR="$OVERLEAF_GENERAL_DIR/$VERSION"
+    log "Updating existing version: ${CYAN}${VERSION}${NC}"
+    if [ "$DRY_RUN" = true ]; then
+        dryrun_log "rm -f \"$VERSION_DIR/$RESUME_PDF\""
+        dryrun_log "rm -rf \"$VERSION_DIR/LaTeX\""
+    else
+        rm -f "$VERSION_DIR/$RESUME_PDF"
+        rm -rf "$VERSION_DIR/LaTeX"
+    fi
+elif [[ "$CHOICE" == "2" ]]; then
+    VERSION="$NEXT_VERSION"
+    VERSION_DIR="$OVERLEAF_GENERAL_DIR/$VERSION"
+    log "Creating new version: ${CYAN}${VERSION}${NC}"
+    if [ "$DRY_RUN" = true ]; then
+        dryrun_log "mkdir -p \"$VERSION_DIR\""
+    else
+        mkdir -p "$VERSION_DIR"
+    fi
+else
+    error_exit "Invalid choice '$CHOICE'. Please enter 1 or 2."
+fi
+
+echo ""
+log "Target directory: $VERSION_DIR"
+echo ""
+
+# Step 4: Copy files, then commit and push
+handle_latex_zip "$VERSION_DIR"
+handle_pdf_copy "$VERSION_DIR"
 commit_and_push_if_needed "$RESUME_REPO" "overleaf general $VERSION added"
 commit_and_push_if_needed "$PORTFOLIO_REPO" "resume $VERSION added"
 print_summary
